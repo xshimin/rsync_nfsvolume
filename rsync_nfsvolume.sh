@@ -90,7 +90,7 @@ systemctl stop nfs-server.service || abort "systemctl stop nfs-server.service FA
 
 #######################################
 # umount NFS Volume for checking Filesystem
-mount | grep $nfsvol >/dev/nill || abort "$nfsvol does not been mounted before checking filesystem"
+mount | grep $nfsvol >/dev/null || abort "$nfsvol does not been mounted before checking filesystem"
 umount $nfsvol || abort " umount ${nfsvol} FAILED"
 
 #######################################
