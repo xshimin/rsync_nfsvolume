@@ -60,12 +60,11 @@ function is_vars_defined(){
 function check_filesystem(){
   local xfs_repair_flg=0
 
-  for i in $@
-  do
-    echo "### /sbin/xfs_repair -n $i ###" >>${xfs_repair_log}
-    /sbin/xfs_repair -n $i                >>${xfs_repair_log} 2>&1 || (( xfs_repair_flg ++ ))
-    echo                                  >>${xfs_repair_log}
-  done
+  echo "### Checking filesystem is started ###"
+  echo "## /sbin/xfs_repair -n $1 ##"
+  /sbin/xfs_repair -n $1 || (( xfs_repair_flg ++ ))
+  echo "## END LOG ##"
+  echo
 
   if [ ${xfs_repair_flg} != 0 ]; then
     return 1
@@ -85,27 +84,14 @@ fi
 file_exists $nfsvol
 
 #######################################
-# Stop NFS service
-systemctl stop nfs-server.service || abort "systemctl stop nfs-server.service FAILED"
-
-#######################################
-# umount NFS Volume for checking Filesystem
-mount | grep $nfsvol >/dev/null || abort "$nfsvol does not been mounted before checking filesystem"
-umount $nfsvol || abort " umount ${nfsvol} FAILED"
-
-#######################################
 # Check Filesystem of target DISK
-check_filesystem $dest_dsk $src_dsk
-
+check_filesystem $dest_dsk | tee ${xfs_repair_log} 2>&1
 if [ $? != 0 ]; then
-  echo "ERROR: xfs check FAILED" >&2
   echo "Saved logfile = ${xfs_repair_log}" >&2
-  echo "## LOG ##"
-  cat ${xfs_repair_log}
-  exit 1
+  abort "ERROR: xfs check FAILED" | tee ${xfs_repair_log} 2>&1
 fi
-
 echo "Checking Filesystem has Finished successfully!"
+echo
 
 #######################################
 # rm logfile
@@ -113,16 +99,6 @@ is_vars_defined ${xfs_repair_log}
 if [ $? == 0 ]; then
   rm -rf ${xfs_repair_log}
 fi
-
-#######################################
-# mount NFS Volume
-mount -a >/dev/null || abort "mount -a FAILED"
-mount | grep $nfsvol >/dev/null || abort "${nfsvol} does not been mounted after checking filesystem"
-
-#######################################
-# start NFS service
-systemctl start nfs-server.service || abort "systemctl start nfs-server.service FAILED"
-systemctl status nfs-server.service | grep "Active: active (exited)" >/dev/null || abort "NFS service is not started"
 
 #######################################
 # Make directory fot backup
@@ -156,11 +132,15 @@ chmod 700 $dst
 
 #######################################
 # Exec RSYNC
-echo "rsync is started >>>>>>"
-echo "# rsync -auvh ${nfsvol}/${parh_subdir} ${dst}/"
-rsync -auvh ${nfsvol}/${parh_subdir} ${dst}/
-rc=$?
-echo "<<<<<< rsync was finished, rc = ${rc}"
+echo "### rsync is started ###"
+if [ "$2" == "--delete" ]; then
+  echo "# rsync -auvh --delete ${nfsvol}/${parh_subdir} ${dst}/"
+  rsync -auvh --delete ${nfsvol}/${parh_subdir} ${dst}/ ; rc=$?
+else
+  echo "# rsync -auvh ${nfsvol}/${parh_subdir} ${dst}/"
+  rsync -auvh ${nfsvol}/${parh_subdir} ${dst}/ ; rc=$?
+fi
+echo "### rsync was finished, rc = ${rc} ###"
 
 #######################################
 # Unmount DISK
